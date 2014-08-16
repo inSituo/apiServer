@@ -70,14 +70,14 @@ func main() {
     log.Debugf("Debug mode enabled")
 
     log.Infof(
-        "Connecting to MongoDB at %s:%s/%s",
+        "Connecting to MongoDB at %s:%d/%s",
         *conf.mongo.Host,
         *conf.mongo.Port,
         *conf.mongo.DB,
     )
     db, err := DBAccess.New(conf.mongo)
     if err != nil {
-        log.Errorf("Unable to connect to MongoDB: %s", err)
+        log.Errorf("Unable to connect to MongoDB: %s", err) // this will panic
     }
     defer db.Close()
 
