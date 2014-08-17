@@ -1,35 +1,50 @@
 package Api
 
 import (
-    "fmt"
     "github.com/gorilla/mux"
     "github.com/inSituo/apiServer/DBAccess"
     "github.com/inSituo/apiServer/LeveledLogger"
+    "github.com/inSituo/apiServer/Middleware"
+    "gopkg.in/mgo.v2/bson"
     "net/http"
 )
 
-type handler func(http.ResponseWriter, *http.Request)
-
 type ApiSection struct {
-    db     *DBAccess.DB
-    log    *LeveledLogger.Logger
-    r      *mux.Router
-    prefix string
-    base   string
+    db  *DBAccess.DB
+    log *LeveledLogger.Logger
+    r   *mux.Router
+    c   *Middleware.Chain
 }
 
-func (as *ApiSection) setupRoute(method, endpoint string, f handler) {
+func (as *ApiSection) setupRoute(method, endpoint string, f http.HandlerFunc) {
     if as.r == nil {
-        panic("'setupRoute' cannot be called before router is init'd.")
+        panic("'setupRoute' cannot be called before route is init'd.")
     }
     if as.log == nil {
         panic("'setupRoute' cannot be called before logger is init'd.")
     }
-    route := genRoute(as.prefix, as.base, endpoint)
-    as.log.Debugf("Setting up route GET %s", route)
-    as.r.HandleFunc(route, f).Methods(method)
+    as.log.Debugf("Setting up route %s %s", method, endpoint)
+    g := f
+    if as.c != nil {
+        as.c.Push(f)
+        g = as.c.MakeHandler()
+        as.c.Pop()
+    }
+    as.r.HandleFunc(endpoint, g).Methods(method)
 }
 
-func genRoute(prefix, base, route string) string {
-    return fmt.Sprintf("/%s%s/%s", prefix, base, route)
+func (as *ApiSection) use(f http.HandlerFunc) {
+    if as.c == nil {
+        as.c = &Middleware.Chain{}
+    }
+    as.c.Push(f)
+}
+
+type ContentRevision struct {
+    uid     bson.ObjectId `bson:"uid"`
+    ts      int           `bson:"ts"`
+    lat     float32       `bson:"lat"`
+    lon     float32       `bson:"lon"`
+    address string        `bson:"address"`
+    content string        `bson:"content"`
 }

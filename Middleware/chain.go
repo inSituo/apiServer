@@ -1,13 +1,11 @@
-package MiddlewareChain
+package Middleware
 
 import (
     "net/http"
 )
 
-type httpHandler func(http.ResponseWriter, *http.Request)
-
 type middleware struct {
-    handler httpHandler
+    handler http.HandlerFunc
     next    *middleware
 }
 
@@ -16,24 +14,33 @@ type Chain struct {
     last *middleware
 }
 
-func (c *Chain) pushMiddleware(m *middleware) {
+func (c *Chain) pushMiddleware(m *middleware) *Chain {
     if c.last != nil {
         c.last.next = m
         c.mws = append(c.mws, c.last)
     }
     c.last = m
+    return c
 }
 
-func (c *Chain) Push(f httpHandler) {
+func (c *Chain) Push(f http.HandlerFunc) *Chain {
     m := &middleware{
         handler: f,
         next:    nil,
     }
-    c.pushMiddleware(m)
+    return c.pushMiddleware(m)
 }
 
-func (c *Chain) PushHandler(h http.Handler) {
-    c.Push(h.ServeHTTP)
+func (c *Chain) Pop() (f http.HandlerFunc) {
+    f = c.last.handler
+    c.last = c.mws[len(c.mws)-1]
+    c.last.next = nil
+    c.mws = c.mws[:len(c.mws)-1]
+    return
+}
+
+func (c *Chain) PushHandler(h http.Handler) *Chain {
+    return c.Push(h.ServeHTTP)
 }
 
 func (c *Chain) MakeHandler() http.HandlerFunc {
@@ -42,10 +49,12 @@ func (c *Chain) MakeHandler() http.HandlerFunc {
     }
     h := http.HandlerFunc(c.last.handler)
     for i := len(c.mws) - 1; i >= 0; i-- {
-        h = func(parent, child httpHandler) http.HandlerFunc {
+        h = func(parent, child http.HandlerFunc) http.HandlerFunc {
             return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 parent(w, r)
-                child(w, r)
+                if w.Header().Get("X-DEBUG-CHAIN-BREAK") == "" {
+                    child(w, r)
+                }
             })
         }(c.mws[i].handler, h.ServeHTTP)
     }

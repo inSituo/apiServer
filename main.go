@@ -7,9 +7,15 @@ import (
     "github.com/inSituo/apiServer/Api"
     "github.com/inSituo/apiServer/DBAccess"
     "github.com/inSituo/apiServer/LeveledLogger"
-    "github.com/inSituo/apiServer/MiddlewareChain"
+    "github.com/inSituo/apiServer/Middleware"
     "net/http"
     "os"
+    "runtime"
+)
+
+const (
+    SERVER_NAME = "InSituo API Server"
+    SERVER_VER  = "v0.0.0"
 )
 
 type GoogleConf struct {
@@ -23,19 +29,21 @@ type ServerConf struct {
     mongo       DBAccess.MongoConf
     google      GoogleConf
     port        *int
-    apiPrefix   *string
     debug       *bool
     sessionSec  *string
     sessionName *string
+    serverName  *string
+    serverVer   *string
 }
 
 func main() {
     conf := ServerConf{
         debug:       flag.Bool("debug", false, "Enable debug log messages"),
         port:        flag.Int("port", 80, "Server listening port"),
-        apiPrefix:   flag.String("prefix", "", "API endpoints prefix"),
         sessionSec:  flag.String("sessionsecret", "SeCrEt", "HTTP session secret"),
         sessionName: flag.String("sessionname", "inSituoSes", "HTTP cookie name"),
+        serverName:  flag.String("servername", SERVER_NAME, "Server name for HTTP header"),
+        serverVer:   flag.String("serverver", SERVER_VER, "Server version for HTTP header"),
         mongo: DBAccess.MongoConf{
             Port:       flag.Int("mport", 27017, "MongoDB server port"),
             Host:       flag.String("mhost", "127.0.0.1", "MongoDB server host"),
@@ -81,13 +89,27 @@ func main() {
     }
     defer db.Close()
 
+    chain := Middleware.Chain{}
+
+    serverHttpHeader := fmt.Sprintf(
+        "%s/%s (%s)",
+        *conf.serverName,
+        *conf.serverVer,
+        runtime.GOOS,
+    )
+    log.Debugf("'Server' HTTP header set to '%s'", serverHttpHeader)
+    chain.Push(func(res http.ResponseWriter, req *http.Request) {
+        res.Header().Set(
+            "Server",
+            serverHttpHeader,
+        )
+    })
+
     r := mux.NewRouter()
 
     // init apis:
-    Api.InitAnswersApi(r, db, log, *conf.apiPrefix)
+    Api.InitAnswersApi(r.PathPrefix("/answers/").Subrouter(), db, log)
 
-    // register middleware:
-    chain := MiddlewareChain.Chain{}
     chain.PushHandler(r)
 
     http.Handle("/", chain.MakeHandler())
