@@ -9,6 +9,7 @@ import (
 const (
     LL_DEBUG = 10
     LL_INFO  = 5
+    LL_WARN  = 3
     LL_ERROR = 0
 )
 
@@ -30,6 +31,12 @@ func (ll *Logger) Debugf(format string, v ...interface{}) {
 func (ll *Logger) Infof(format string, v ...interface{}) {
     if ll.level >= LL_INFO {
         ll.printf("INF", format, v...)
+    }
+}
+
+func (ll *Logger) Warnf(format string, v ...interface{}) {
+    if ll.level >= LL_WARN {
+        ll.printf("WRN", format, v...)
     }
 }
 

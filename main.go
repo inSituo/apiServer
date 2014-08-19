@@ -3,6 +3,7 @@ package main
 import (
     "flag"
     "fmt"
+    "github.com/gorilla/context"
     "github.com/gorilla/mux"
     "github.com/inSituo/apiServer/Api"
     "github.com/inSituo/apiServer/DBAccess"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-    SERVER_NAME = "InSituo API Server"
-    SERVER_VER  = "v0.0.0"
+    SERVER_VER_MAJOR = 0
+    SERVER_VER_MINOR = 0
+    SERVER_VER_PATCH = 0
 )
 
 type GoogleConf struct {
@@ -42,8 +44,15 @@ func main() {
         port:        flag.Int("port", 80, "Server listening port"),
         sessionSec:  flag.String("sessionsecret", "SeCrEt", "HTTP session secret"),
         sessionName: flag.String("sessionname", "inSituoSes", "HTTP cookie name"),
-        serverName:  flag.String("servername", SERVER_NAME, "Server name for HTTP header"),
-        serverVer:   flag.String("serverver", SERVER_VER, "Server version for HTTP header"),
+        serverName:  flag.String("servername", "InSituo API Server", "Server name for HTTP header"),
+        serverVer: flag.String(
+            "serverver",
+            fmt.Sprintf("v%d.%d.%d",
+                SERVER_VER_MAJOR,
+                SERVER_VER_MINOR,
+                SERVER_VER_PATCH),
+            "Server version for HTTP header",
+        ),
         mongo: DBAccess.MongoConf{
             Port:       flag.Int("mport", 27017, "MongoDB server port"),
             Host:       flag.String("mhost", "127.0.0.1", "MongoDB server host"),
@@ -60,11 +69,13 @@ func main() {
             scope:        flag.String("gscope", "", "Google API scope"),
         },
     }
+    flag.StringVar(&Api.API_KEY_REQ_HEADER, "apikeyheader", "X-API-KEY", "API key request-header name")
 
     showHelp := flag.Bool("help", false, "Show help")
 
     flag.Parse()
     if *showHelp {
+        fmt.Printf("%s/%s\n\n", *conf.serverName, *conf.serverVer)
         flag.PrintDefaults()
         return
     }
@@ -111,6 +122,9 @@ func main() {
     Api.InitAnswersApi(r.PathPrefix("/answers/").Subrouter(), db, log)
 
     chain.PushHandler(r)
+    chain.Push(func(res http.ResponseWriter, req *http.Request) {
+        context.Clear(req)
+    })
 
     http.Handle("/", chain.MakeHandler())
     addr := fmt.Sprintf(":%d", *conf.port)
