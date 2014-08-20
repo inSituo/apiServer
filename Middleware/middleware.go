@@ -1,26 +1,21 @@
 package Middleware
 
 import (
-    "encoding/json"
-    "github.com/gorilla/context"
+    "encoding/xml"
     "github.com/gorilla/mux"
     "github.com/inSituo/apiServer/LeveledLogger"
     "gopkg.in/mgo.v2/bson"
     "net/http"
 )
 
-func IdVerifier(log *LeveledLogger.Logger) http.HandlerFunc {
+func IdVerifier(log *LeveledLogger.Logger, c *Chain, setRes ResponseSetter) http.HandlerFunc {
     return func(res http.ResponseWriter, req *http.Request) {
         id := mux.Vars(req)["id"]
         if id != "" {
             if !bson.IsObjectIdHex(id) {
                 log.Debugf("ID %s is invalid. Breaking middleware chain", id)
-                context.Set(req, "break-chain", true)
-                res.WriteHeader(http.StatusBadRequest)
-                js, _ := json.Marshal(map[string]string{
-                    "error": "invalid id",
-                })
-                res.Write(js)
+                c.Break(req)
+                setRes(req, http.StatusBadRequest, ErrRes{Reason: "invalid id"})
                 return
             }
             log.Debugf("ID %s is valid.", id)
@@ -39,4 +34,9 @@ func RequestDebugInfo(log *LeveledLogger.Logger) http.HandlerFunc {
         }
         log.Debugf("------------------------")
     }
+}
+
+type ErrRes struct {
+    XMLName xml.Name `json:"-" xml:"error"`
+    Reason  string   `json:"reason" xml:"reason"`
 }

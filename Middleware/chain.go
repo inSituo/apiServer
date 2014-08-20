@@ -5,6 +5,10 @@ import (
     "net/http"
 )
 
+const (
+    _CHAIN_BREAKER = "__chain_breaker"
+)
+
 type middleware struct {
     handler http.HandlerFunc
     next    *middleware
@@ -18,6 +22,13 @@ type Chain struct {
 
 func NewChain(breakable bool) *Chain {
     return &Chain{breakable: breakable}
+}
+
+func (c *Chain) Break(r *http.Request) *Chain {
+    if c.breakable {
+        context.Set(r, _CHAIN_BREAKER, true)
+    }
+    return c
 }
 
 func (c *Chain) pushMiddleware(m *middleware) *Chain {
@@ -58,10 +69,10 @@ func (c *Chain) MakeHandler() http.HandlerFunc {
         h = func(parent, child http.HandlerFunc) http.HandlerFunc {
             return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 parent(w, r)
-                if !c.breakable || context.Get(r, "break-chain") != true {
+                if !c.breakable || context.Get(r, _CHAIN_BREAKER) != true {
                     child(w, r)
                 }
-                context.Delete(r, "break-chain")
+                context.Delete(r, _CHAIN_BREAKER)
             })
         }(c.mws[i].handler, h.ServeHTTP)
     }

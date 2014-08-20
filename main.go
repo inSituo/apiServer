@@ -28,23 +28,19 @@ type GoogleConf struct {
 }
 
 type ServerConf struct {
-    mongo       DBAccess.MongoConf
-    google      GoogleConf
-    port        *int
-    debug       *bool
-    sessionSec  *string
-    sessionName *string
-    serverName  *string
-    serverVer   *string
+    mongo      DBAccess.MongoConf
+    google     GoogleConf
+    port       *int
+    debug      *bool
+    serverName *string
+    serverVer  *string
 }
 
 func main() {
     conf := ServerConf{
-        debug:       flag.Bool("debug", false, "Enable debug log messages"),
-        port:        flag.Int("port", 80, "Server listening port"),
-        sessionSec:  flag.String("sessionsecret", "SeCrEt", "HTTP session secret"),
-        sessionName: flag.String("sessionname", "inSituoSes", "HTTP cookie name"),
-        serverName:  flag.String("servername", "InSituo API Server", "Server name for HTTP header"),
+        debug:      flag.Bool("debug", false, "Enable debug log messages"),
+        port:       flag.Int("port", 80, "Server listening port"),
+        serverName: flag.String("servername", "InSituo API Server", "Server name for HTTP header"),
         serverVer: flag.String(
             "serverver",
             fmt.Sprintf("v%d.%d.%d",
@@ -70,6 +66,7 @@ func main() {
         },
     }
     flag.StringVar(&Api.API_KEY_REQ_HEADER, "apikeyheader", "X-API-KEY", "API key request-header name")
+    flag.StringVar(&Api.API_FMT_REQ_HEADER, "apifmtheader", "X-API-FORMAT", "API response format request-header name")
 
     showHelp := flag.Bool("help", false, "Show help")
 
@@ -121,15 +118,17 @@ func main() {
     }
 
     r := mux.NewRouter()
+    r.KeepContext = true
 
     // init apis:
-    Api.InitAnswersApi(r.PathPrefix("/answers/").Subrouter(), db, log)
+    Api.InitAnswersApi(r.PathPrefix("/answers/").Subrouter(), db, log, Middleware.SetResponse)
 
     chain.PushHandler(r)
 
     // unbrakeable middleware:
     ubchain := Middleware.NewChain(false)
     ubchain.Push(chain.MakeHandler())
+    ubchain.Push(Middleware.AutoFormatResponder(log, Api.API_FMT_REQ_HEADER))
     ubchain.Push(func(res http.ResponseWriter, req *http.Request) {
         context.Clear(req)
         log.Debugf("Request context cleared")
