@@ -100,7 +100,8 @@ func main() {
     }
     defer db.Close()
 
-    chain := Middleware.Chain{}
+    // breakable middleware chain:
+    chain := Middleware.NewChain(true)
 
     serverHttpHeader := fmt.Sprintf(
         "%s/%s (%s)",
@@ -115,6 +116,9 @@ func main() {
             serverHttpHeader,
         )
     })
+    if *conf.debug {
+        chain.Push(Middleware.RequestDebugInfo(log))
+    }
 
     r := mux.NewRouter()
 
@@ -122,11 +126,16 @@ func main() {
     Api.InitAnswersApi(r.PathPrefix("/answers/").Subrouter(), db, log)
 
     chain.PushHandler(r)
-    chain.Push(func(res http.ResponseWriter, req *http.Request) {
+
+    // unbrakeable middleware:
+    ubchain := Middleware.NewChain(false)
+    ubchain.Push(chain.MakeHandler())
+    ubchain.Push(func(res http.ResponseWriter, req *http.Request) {
         context.Clear(req)
+        log.Debugf("Request context cleared")
     })
 
-    http.Handle("/", chain.MakeHandler())
+    http.Handle("/", ubchain.MakeHandler())
     addr := fmt.Sprintf(":%d", *conf.port)
     log.Infof("Starting web service at %s", addr)
     if err := http.ListenAndServe(addr, nil); err != nil {

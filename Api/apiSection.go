@@ -1,6 +1,7 @@
 package Api
 
 import (
+    "encoding/json"
     "github.com/gorilla/context"
     "github.com/gorilla/mux"
     "github.com/inSituo/apiServer/DBAccess"
@@ -45,7 +46,7 @@ func (as *ApiSection) setupRoute(method, endpoint string, f http.HandlerFunc) {
 //   0. loggedIn: true/false
 //   0. userId: ...
 // API key is sent with an http header
-func (as *ApiSection) GetUserId(res http.ResponseWriter, req *http.Request) {
+func (as *ApiSection) GetUserInfo(res http.ResponseWriter, req *http.Request) {
     apiKey := req.Header.Get(API_KEY_REQ_HEADER)
     var login Login
     if err := as.db.Logins.
@@ -53,7 +54,7 @@ func (as *ApiSection) GetUserId(res http.ResponseWriter, req *http.Request) {
         One(&login); err != nil {
         if err != mgo.ErrNotFound {
             as.log.Warnf("In 'ApiSection.GetUserId', Query returned error for %s: %s", apiKey, err)
-            res.Header().Set("X-DEBUG-CHAIN-BREAK", "Api Key Verification")
+            context.Set(req, "break-chain", true)
             res.WriteHeader(http.StatusInternalServerError)
             return
         }
@@ -72,9 +73,18 @@ func (as *ApiSection) GetUserId(res http.ResponseWriter, req *http.Request) {
 
 func (as *ApiSection) use(f http.HandlerFunc) {
     if as.c == nil {
-        as.c = &Middleware.Chain{}
+        as.c = Middleware.NewChain(true)
     }
     as.c.Push(f)
+}
+
+func (as *ApiSection) respondNotLoggedIn(res http.ResponseWriter) {
+    as.log.Debugf("User not logged in. Responding with %d", http.StatusUnauthorized)
+    res.WriteHeader(http.StatusUnauthorized)
+    js, _ := json.Marshal(map[string]string{
+        "error": "not logged in",
+    })
+    res.Write(js)
 }
 
 type Location struct {
@@ -96,3 +106,9 @@ type Login struct {
     UID     bson.ObjectId `bson:"uid"`
     Expires int64         `bson:"expires"`
 }
+
+// type UserInfo struct {
+//     id    bson.ObjectId `bson:"_id"`
+//     admin bool          `bson:"admin"`
+//     mod   bool          `bson:"mod"`
+// }

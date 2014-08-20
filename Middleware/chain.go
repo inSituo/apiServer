@@ -1,6 +1,7 @@
 package Middleware
 
 import (
+    "github.com/gorilla/context"
     "net/http"
 )
 
@@ -10,8 +11,13 @@ type middleware struct {
 }
 
 type Chain struct {
-    mws  []*middleware
-    last *middleware
+    mws       []*middleware
+    last      *middleware
+    breakable bool
+}
+
+func NewChain(breakable bool) *Chain {
+    return &Chain{breakable: breakable}
 }
 
 func (c *Chain) pushMiddleware(m *middleware) *Chain {
@@ -52,9 +58,10 @@ func (c *Chain) MakeHandler() http.HandlerFunc {
         h = func(parent, child http.HandlerFunc) http.HandlerFunc {
             return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 parent(w, r)
-                if w.Header().Get("X-DEBUG-CHAIN-BREAK") == "" {
+                if !c.breakable || context.Get(r, "break-chain") != true {
                     child(w, r)
                 }
+                context.Delete(r, "break-chain")
             })
         }(c.mws[i].handler, h.ServeHTTP)
     }

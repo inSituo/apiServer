@@ -32,8 +32,15 @@ func InitAnswersApi(
         },
     }
 
-    a.use(Middleware.IdVerifier)
-    a.use(a.GetUserId)
+    a.use(Middleware.IdVerifier(a.log))
+    a.use(a.GetUserInfo)
+    // all methods in this api require a logged-in user
+    a.use(func(res http.ResponseWriter, req *http.Request) {
+        if context.Get(req, "loggedIn") != true {
+            a.respondNotLoggedIn(res)
+            context.Set(req, "break-chain", true)
+        }
+    })
 
     a.setupRoute("GET", "/{id}", a.getById)
     a.setupRoute("GET", "/revs/{id}", a.revsById)
@@ -112,7 +119,6 @@ func (a *AnswersApi) getById(res http.ResponseWriter, req *http.Request) {
 }
 
 func (a *AnswersApi) revsById(res http.ResponseWriter, req *http.Request) {
-    fmt.Printf("LOGGED IN %s", context.Get(req, "loggedIn"))
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     var revs Revisions
     if err := a.db.Answers.
