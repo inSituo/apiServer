@@ -26,14 +26,26 @@ type ApiSection struct {
     setRes Middleware.ResponseSetter
 }
 
+func NewApiSection(
+    db *DBAccess.DB,
+    log *LeveledLogger.Logger,
+    r *mux.Router,
+    setRes Middleware.ResponseSetter,
+) *ApiSection {
+    a := &ApiSection{db: db, log: log, r: r, setRes: setRes}
+    a.c = Middleware.NewChain(true)
+    return a
+}
+
 func (as *ApiSection) setupRoute(method, endpoint string, f http.HandlerFunc) {
+    iname := "ApiSection.setupRoute"
     if as.r == nil {
         panic("'setupRoute' cannot be called before route is init'd.")
     }
     if as.log == nil {
         panic("'setupRoute' cannot be called before logger is init'd.")
     }
-    as.log.Debugf("Setting up route %s %s", method, endpoint)
+    as.log.Call(iname, method, endpoint)
     g := f
     if as.c != nil {
         as.c.Push(f)
@@ -49,39 +61,37 @@ func (as *ApiSection) setupRoute(method, endpoint string, f http.HandlerFunc) {
 //   0. userId: ...
 // API key is sent with an http header
 func (as *ApiSection) GetUserInfo(res http.ResponseWriter, req *http.Request) {
+    iname := "ApiSection.GetUserInfo"
     apiKey := req.Header.Get(API_KEY_REQ_HEADER)
     var login Login
     if err := as.db.Logins.
         Find(bson.M{"key": apiKey}).
         One(&login); err != nil {
         if err != mgo.ErrNotFound {
-            as.log.Warnf("In 'ApiSection.GetUserId', Query returned error for %s: %s", apiKey, err)
+            as.log.Warn(iname, "query error", err, apiKey)
             as.c.Break(req)
             as.setRes(req, http.StatusInternalServerError, nil)
             return
         }
-        as.log.Debugf("In 'ApiSection.GetUserId', Query returned empty for %s", apiKey)
+        as.log.Info(iname, "not logged-in", apiKey)
         context.Set(req, "loggedIn", false)
         return
     }
     if login.Expires < time.Now().Unix() {
-        as.log.Debugf("In 'ApiSection.GetUserId', Login expired for %s", apiKey)
+        as.log.Info(iname, "login expired", apiKey)
         context.Set(req, "loggedIn", false)
         return
     }
+    as.log.Info(iname, "logged-in user", apiKey, login.UID.Hex())
     context.Set(req, "loggedIn", true)
     context.Set(req, "user", &UserInfo{ID: login.UID})
 }
 
 func (as *ApiSection) use(f http.HandlerFunc) {
-    if as.c == nil {
-        as.c = Middleware.NewChain(true)
-    }
     as.c.Push(f)
 }
 
 func (as *ApiSection) respondNotLoggedIn(res http.ResponseWriter, req *http.Request) {
-    as.log.Debugf("User not logged in. Responding with %d", http.StatusUnauthorized)
     as.setRes(req, http.StatusUnauthorized, ErrRes{Reason: "not logged in"})
 }
 

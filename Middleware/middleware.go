@@ -9,30 +9,38 @@ import (
 )
 
 func IdVerifier(log *LeveledLogger.Logger, c *Chain, setRes ResponseSetter) http.HandlerFunc {
+    iname := "Middleware.IdVerifier"
     return func(res http.ResponseWriter, req *http.Request) {
         id := mux.Vars(req)["id"]
         if id != "" {
             if !bson.IsObjectIdHex(id) {
-                log.Debugf("ID %s is invalid. Breaking middleware chain", id)
+                log.Debug(iname, "invalid id", id)
+                log.Debug(iname, "breaking middleware chain")
                 c.Break(req)
                 setRes(req, http.StatusBadRequest, ErrRes{Reason: "invalid id"})
                 return
             }
-            log.Debugf("ID %s is valid.", id)
+            log.Debug(iname, "valid id", id)
         }
     }
 }
 
-func RequestDebugInfo(log *LeveledLogger.Logger) http.HandlerFunc {
+func RequestInfo(log *LeveledLogger.Logger, apiKeyHeader string) http.HandlerFunc {
+    iname := "Middleware.RequestInfo"
     return func(res http.ResponseWriter, req *http.Request) {
-        log.Debugf("--- New HTTP request ---")
-        log.Debugf("Remote: %s", req.RemoteAddr)
-        log.Debugf("Method: %s", req.Method)
-        log.Debugf("URI: %s", req.RequestURI)
+        log.Info(iname, req.RemoteAddr, req.Header.Get(apiKeyHeader), req.Method, req.RequestURI)
+    }
+}
+
+func RequestDebugInfo(log *LeveledLogger.Logger) http.HandlerFunc {
+    iname := "Middleware.RequestDebugInfo"
+    return func(res http.ResponseWriter, req *http.Request) {
+        log.Debug(iname, "remote", req.RemoteAddr)
+        log.Debug(iname, "method", req.Method)
+        log.Debug(iname, "uri", req.RequestURI)
         for k, v := range req.Header {
-            log.Debugf("Header %s: %s", k, v)
+            log.Debug(iname, "header", k, v)
         }
-        log.Debugf("------------------------")
     }
 }
 

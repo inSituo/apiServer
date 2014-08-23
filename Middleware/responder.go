@@ -30,6 +30,7 @@ type Responder struct {
 // 1. JSON
 // 2. XML
 func (r *Responder) Respond(res http.ResponseWriter, req *http.Request) {
+    iname := "Responder.Respond"
     var marshalled []byte
     var ctype string
     var err error
@@ -52,16 +53,15 @@ func (r *Responder) Respond(res http.ResponseWriter, req *http.Request) {
     if err == nil {
         code, found := context.Get(req, _RESPONSE_CODE).(int)
         if !found {
-            r.log.Debugf("Falied to cast context reponse code %s to int", context.Get(req, _RESPONSE_CODE))
-            code = http.StatusOK
+            r.log.Debug(iname, "response code not set. skipping auto response", context.Get(req, _RESPONSE_CODE))
+            return
         }
-        r.log.Debugf("Writing response with code %d", code)
+        r.log.Debug(iname, "writing response", code)
         res.Header().Set("Content-Type", ctype)
         res.WriteHeader(code)
         res.Write(marshalled)
     } else {
-        r.log.Debugf("Response content encoding error: %s", err)
-        r.log.Warnf("Responding with %d due to encoding error", http.StatusInternalServerError)
+        r.log.Warn(iname, "encoding error", err)
         res.WriteHeader(http.StatusInternalServerError)
     }
 }

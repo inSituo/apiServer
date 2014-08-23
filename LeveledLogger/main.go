@@ -4,13 +4,16 @@ import (
     "fmt"
     "io"
     "log"
+    "time"
 )
 
 const (
-    LL_DEBUG = 10
-    LL_INFO  = 5
-    LL_WARN  = 3
-    LL_ERROR = 0
+    LL_DEBUG  = 10 - iota
+    LL_INFO   = 10 - iota
+    LL_CALL   = 10 - iota
+    LL_ACTION = 10 - iota
+    LL_WARN   = 10 - iota
+    LL_ERROR  = 10 - iota
 )
 
 type Logger struct {
@@ -18,38 +21,54 @@ type Logger struct {
     logger *log.Logger
 }
 
-func (ll *Logger) printf(level string, format string, v ...interface{}) {
-    ll.logger.Printf("["+level+"] "+format, v...)
+func (ll *Logger) print(level, fname, msg string, v ...interface{}) {
+    format := fmt.Sprintf("%d#%s#%s#%s", time.Now().Unix(), level, fname, msg)
+    for i := 0; i < len(v); i++ {
+        format += "#%v"
+    }
+    ll.logger.Printf(format, v...)
 }
 
-func (ll *Logger) Debugf(format string, v ...interface{}) {
+func (ll *Logger) Debug(fname, msg string, fargs ...interface{}) {
     if ll.level >= LL_DEBUG {
-        ll.printf("DBG", format, v...)
+        ll.print("DBG", fname, msg, fargs...)
     }
 }
 
-func (ll *Logger) Infof(format string, v ...interface{}) {
+func (ll *Logger) Info(fname, msg string, fargs ...interface{}) {
     if ll.level >= LL_INFO {
-        ll.printf("INF", format, v...)
+        ll.print("INF", fname, msg, fargs...)
     }
 }
 
-func (ll *Logger) Warnf(format string, v ...interface{}) {
-    if ll.level >= LL_WARN {
-        ll.printf("WRN", format, v...)
+func (ll *Logger) Call(fname string, fargs ...interface{}) {
+    if ll.level >= LL_CALL {
+        ll.print("CAL", fname, "", fargs...)
     }
 }
 
-func (ll *Logger) Errorf(format string, v ...interface{}) {
+func (ll *Logger) Action(fname string, fargs ...interface{}) {
+    if ll.level >= LL_CALL {
+        ll.print("ACT", fname, "", fargs...)
+    }
+}
+
+func (ll *Logger) Warn(fname, msg string, fargs ...interface{}) {
+    if ll.level >= LL_DEBUG {
+        ll.print("WRN", fname, msg, fargs...)
+    }
+}
+
+func (ll *Logger) Error(fname, msg string, fargs ...interface{}) {
     if ll.level >= LL_ERROR {
-        ll.printf("ERR", format, v...)
-        panic(fmt.Sprintf(format, v...))
+        ll.print("ERR", fname, msg, fargs...)
+        panic(msg)
     }
 }
 
 func New(out io.Writer, level int) *Logger {
     return &Logger{
         level:  level,
-        logger: log.New(out, "", log.Ldate|log.Ltime),
+        logger: log.New(out, "", 0),
     }
 }

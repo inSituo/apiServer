@@ -13,7 +13,7 @@ import (
 )
 
 type AnswersApi struct {
-    ApiSection
+    *ApiSection
 }
 
 func InitAnswersApi(
@@ -22,16 +22,11 @@ func InitAnswersApi(
     log *LeveledLogger.Logger,
     setRes Middleware.ResponseSetter,
 ) {
-    log.Debugf("Setting up answers API")
+    iname := "InitAnswersApi"
+    log.Call(iname)
 
-    a := AnswersApi{
-        ApiSection{
-            db:     db,
-            log:    log,
-            r:      r,
-            setRes: setRes,
-        },
-    }
+    a := AnswersApi{}
+    a.ApiSection = NewApiSection(db, log, r, setRes)
 
     a.use(Middleware.IdVerifier(a.log, a.c, a.setRes))
     a.use(a.GetUserInfo)
@@ -67,9 +62,10 @@ type Revisions struct {
 }
 
 func (a *AnswersApi) getById(res http.ResponseWriter, req *http.Request) {
+    iname := "AnswersApi.getById"
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     user := context.Get(req, "user").(*UserInfo)
-    a.log.Infof("User %s asked for answer %s", user.ID, id)
+    a.log.Call(iname, user.ID.Hex(), id.Hex())
     pipe := a.db.Answers.Pipe([]bson.M{
         {
             "$match": bson.M{
@@ -111,63 +107,87 @@ func (a *AnswersApi) getById(res http.ResponseWriter, req *http.Request) {
     var answer Answer
     if err := pipe.One(&answer); err != nil {
         if err != mgo.ErrNotFound {
-            a.log.Warnf("In 'AnswersApi.getById', Pipe returned error for %s: %s", id, err)
+            a.log.Warn(iname, "pipe error", err, id.Hex())
             a.setRes(req, http.StatusInternalServerError, nil)
             return
         }
-        a.log.Debugf("In 'AnswersApi.getById', Pipe returned empty for %s", id)
-        a.setRes(req, http.StatusNoContent, nil)
+        a.log.Debug(iname, "pipe empty", id.Hex())
+        a.setRes(req, http.StatusNotFound, nil)
         return
     }
     a.setRes(req, http.StatusOK, answer)
 }
 
 func (a *AnswersApi) revsById(res http.ResponseWriter, req *http.Request) {
+    iname := "AnswersApi.revsById"
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     user := context.Get(req, "user").(*UserInfo)
-    a.log.Infof("User %s asked for revisions of answer %s", user.ID, id)
+    a.log.Call(iname, user.ID.Hex(), id.Hex())
     var revs Revisions
     if err := a.db.Answers.
         Find(bson.M{"_id": id}).
         One(&revs); err != nil {
         if err != mgo.ErrNotFound {
-            a.log.Warnf("In 'AnswersApi.revsById', Query returned error for %s: %s", id, err)
+            a.log.Warn(iname, "query error", err, id.Hex())
             a.setRes(req, http.StatusInternalServerError, nil)
             return
         }
-        a.log.Debugf("In 'AnswersApi.revsById', Query returned empty for %s", id)
-        a.setRes(req, http.StatusNoContent, nil)
+        a.log.Debug(iname, "query empty", id.Hex())
+        a.setRes(req, http.StatusNotFound, nil)
         return
     }
     a.setRes(req, http.StatusOK, revs)
 }
 
 func (a *AnswersApi) deleteById(res http.ResponseWriter, req *http.Request) {
+    iname := "AnswersApi.deleteById"
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     user := context.Get(req, "user").(*UserInfo)
-    a.log.Infof("User %s asked to delete answer %s", user.ID, id)
+    a.log.Call(iname, user.ID.Hex(), id.Hex())
     // need to check if the first revision of this answer was posted by this
     // user. if yes, can delete. otherwise, no permission.
-    count, _ := a.db.Answers.Find(bson.M{
+    count, err := a.db.Answers.Find(bson.M{
         "_id":        id,
         "revs.0.uid": user.ID,
     }).Count()
-    if count > 0 {
+    switch {
+    case err != nil:
+        // server error
+        a.log.Warn(iname, "query error", err, id.Hex(), user.ID.Hex())
+        a.setRes(req, http.StatusInternalServerError, nil)
+    case count == 0:
+        // can't delete
+        a.log.Info(iname, "delete denied", user.ID.Hex(), id.Hex())
+        a.setRes(req, http.StatusForbidden, ErrRes{Reason: "not owner of answer"})
+    default:
         // can delete
+        err = a.db.Answers.Remove(bson.M{"_id": id})
+        if err != nil {
+            // server error
+            a.log.Warn(iname, "remove error", err, id)
+            a.setRes(req, http.StatusInternalServerError, nil)
+        } else {
+            // success
+            a.log.Action(iname, user.ID.Hex(), id.Hex())
+            a.setRes(req, http.StatusNoContent, nil)
+        }
     }
-    a.setRes(req, http.StatusNoContent, nil)
 }
 
 func (a *AnswersApi) newRevById(res http.ResponseWriter, req *http.Request) {
+    iname := "AnswersApi.newRevById"
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     user := context.Get(req, "user").(*UserInfo)
-    a.log.Infof("User %s asked to add a new revision to answer %s", user.ID, id)
+    a.log.Call(iname, user.ID.Hex(), id.Hex())
+    // first check if this answer exists
+
     a.setRes(req, http.StatusNoContent, nil)
 }
 
 func (a *AnswersApi) newByQid(res http.ResponseWriter, req *http.Request) {
+    iname := "AnswersApi.newByQid"
     id := bson.ObjectIdHex(mux.Vars(req)["id"])
     user := context.Get(req, "user").(*UserInfo)
-    a.log.Infof("User %s asked to add a new answer to question %s", user.ID, id)
+    a.log.Call(iname, user.ID.Hex(), id.Hex())
     a.setRes(req, http.StatusNoContent, nil)
 }

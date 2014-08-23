@@ -37,6 +37,7 @@ type ServerConf struct {
 }
 
 func main() {
+    iname := "main"
     conf := ServerConf{
         debug:      flag.Bool("debug", false, "Enable debug log messages"),
         port:       flag.Int("port", 80, "Server listening port"),
@@ -83,17 +84,18 @@ func main() {
     }
     log := LeveledLogger.New(os.Stdout, ll_level)
 
-    log.Debugf("Debug mode enabled")
+    log.Debug(iname, "debug mode enabled")
 
-    log.Infof(
-        "Connecting to MongoDB at %s:%d/%s",
+    log.Info(
+        iname,
+        "connecting to MongoDB",
         *conf.mongo.Host,
         *conf.mongo.Port,
         *conf.mongo.DB,
     )
     db, err := DBAccess.New(conf.mongo)
     if err != nil {
-        log.Errorf("Unable to connect to MongoDB: %s", err) // this will panic
+        log.Error(iname, "failed to create a new db", err) // this will panic
     }
     defer db.Close()
 
@@ -106,13 +108,14 @@ func main() {
         *conf.serverVer,
         runtime.GOOS,
     )
-    log.Debugf("'Server' HTTP header set to '%s'", serverHttpHeader)
+    log.Debug(iname, "'Server' HTTP header", serverHttpHeader)
     chain.Push(func(res http.ResponseWriter, req *http.Request) {
         res.Header().Set(
             "Server",
             serverHttpHeader,
         )
     })
+    chain.Push(Middleware.RequestInfo(log, Api.API_KEY_REQ_HEADER))
     if *conf.debug {
         chain.Push(Middleware.RequestDebugInfo(log))
     }
@@ -131,13 +134,13 @@ func main() {
     ubchain.Push(Middleware.AutoFormatResponder(log, Api.API_FMT_REQ_HEADER))
     ubchain.Push(func(res http.ResponseWriter, req *http.Request) {
         context.Clear(req)
-        log.Debugf("Request context cleared")
+        log.Debug(iname, "request context cleared")
     })
 
     http.Handle("/", ubchain.MakeHandler())
     addr := fmt.Sprintf(":%d", *conf.port)
-    log.Infof("Starting web service at %s", addr)
+    log.Info(iname, "starting web service", addr)
     if err := http.ListenAndServe(addr, nil); err != nil {
-        log.Errorf("%s", err)
+        log.Error(iname, "failed to start server", err)
     }
 }
